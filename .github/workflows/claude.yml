@@ -1,0 +1,91 @@
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Review PR
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--max-turns 15"
+          prompt: |
+            You are reviewing a PR in an open-source project that accepts external contributions.
+            Your review must cover both code quality AND security/supply-chain risks.
+
+            ## 1. Security & Supply Chain Review (PRIORITY)
+
+            Check for potentially malicious or dangerous patterns:
+            - Obfuscated code, encoded strings (base64, hex), eval/Function constructor usage
+            - Unexpected network calls (fetch, http, axios, WebSocket to unknown hosts)
+            - File system access outside project scope (reading ~/.ssh, /etc/passwd, env files)
+            - Attempts to exfiltrate env vars, secrets, or tokens
+            - Suspicious postinstall/preinstall scripts in package.json
+            - New dependencies — verify they are legitimate and widely used
+            - Backdoors: hidden endpoints, hardcoded credentials, auth bypass logic
+            - Data exfiltration through logs, error messages, or analytics
+            - Prototype pollution, ReDoS, or unsafe deserialization patterns
+
+            If anything suspicious is found, flag it as 🔴 SECURITY with clear explanation.
+
+            ## 2. Code Quality Review
+
+            - TypeScript: proper typing, no unnecessary `any`, correct use of generics
+            - React: hook dependency arrays, key props, unnecessary re-renders, proper cleanup
+            - API/Backend: input validation, proper error handling, correct HTTP status codes
+            - Prisma/MongoDB: efficient queries, no N+1, proper error handling
+            - Tests: new features should include tests
+
+            ## 3. Output Format
+
+            Use this structure:
+
+            ### Security
+            [🟢 No issues found / 🔴 Issues listed with file:line and explanation]
+
+            ### Code Quality
+            [List issues by severity: 🔴 Critical > 🟡 Medium > 🟢 Minor]
+
+            ### Summary
+            [1-2 sentence verdict: approve or request changes]
+
+  respond:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Respond to comment
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--max-turns 15"
